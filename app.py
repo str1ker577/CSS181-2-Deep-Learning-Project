@@ -2,8 +2,10 @@
 # Imported Libraries #
 ######################
 import streamlit as st
-import torch
+from ultralytics import YOLO
 from PIL import Image
+import os
+import tempfile
 
 ##############
 # Page Setup #
@@ -16,14 +18,17 @@ st.set_page_config(
 
 st.title("The Neural Force Project")
 st.header("CSS181-2 Deep Learning Project")
-st.subheader("")
 
 #########################
 # Load YOLOv8 Model     #
 #########################
+@st.cache_resource
 def load_model():
-    model = torch.hub.load("ultralytics/yolov5", "custom", path="./model/best.pt", force_reload=False)
-    return model
+    model_path = "./model/best.pt"
+    if not os.path.exists(model_path):
+        st.error("⚠️ Model file not found! Please place `best.pt` inside the `/model` folder.")
+        st.stop()
+    return YOLO(model_path)
 
 try:
     model = load_model()
@@ -47,18 +52,27 @@ if uploaded_file:
     if st.button("🔮 Predict", key="predict_button"):
         with st.spinner("Running model prediction..."):
             try:
-                results = model(image, size=640)
-                if len(results.xyxy[0]) > 0:
-                    cls_idx = int(results.xyxy[0][0][-1].item())
-                    pred_class = model.names[cls_idx]
-                else:
-                    pred_class = "No weld detected"
+                # Save uploaded image temporarily
+                file_ext = os.path.splitext(uploaded_file.name)[1]
+                with tempfile.NamedTemporaryFile(suffix=file_ext, delete=False) as tmp:
+                    image.save(tmp.name)
+                    results = model(tmp.name)
+
+                # Extract prediction
+                boxes = results[0].boxes
+                pred_class = (
+                    results[0].names[int(boxes.cls[0])]
+                    if len(boxes) > 0
+                    else "No weld detected"
+                )
 
                 st.success(f"✅ Predicted Class: **{pred_class.upper()}**")
 
-                results.render()
-                st.image(results.ims[0], caption="Detection Result", use_column_width=True)
+                # Show annotated result
+                annotated = results[0].plot()
+                st.image(annotated, caption="Detection Result", use_column_width=True)
+
             except Exception as e:
                 st.error(f"⚠️ Prediction failed: {e}")
 else:
-    st.warning("Please upload an image to begin.")
+    st.info("Please upload an image to begin.")
