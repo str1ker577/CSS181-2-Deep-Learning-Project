@@ -1,7 +1,15 @@
+# --- Core Dependencies ---
 streamlit
-torch==2.5.1+cpu
-torchvision==0.20.1+cpu
-torchaudio==2.5.1+cpu
---extra-index-url https://download.pytorch.org/whl/cpu
-pillow
+pandas
 numpy
+scikit-learn
+joblib
+pillow
+
+# --- Deep Learning Dependencies ---
+torch>=2.5.0
+torchvision>=0.21.0
+ultralytics>=8.3.10
+
+# --- Optional (for smooth Streamlit visuals/logs) ---
+rich
