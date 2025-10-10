@@ -3,6 +3,6 @@ pandas
 numpy
 scikit-learn
 joblib
-ultralytics==8.2.103
-opencv-python-headless==4.10.0.84
+ultralytics==8.0.70
+opencv-python-headless==4.8.1.78
 Pillow
