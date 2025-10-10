@@ -1,15 +1,6 @@
-# --- Core Dependencies ---
 streamlit
-pandas
-numpy
-scikit-learn
-joblib
+ultralytics
+torch
+torchvision
 pillow
-
-# --- Deep Learning Dependencies ---
-torch>=2.5.0
-torchvision>=0.21.0
-ultralytics>=8.3.10
-
-# --- Optional (for smooth Streamlit visuals/logs) ---
-rich
+opencv-python-headless
