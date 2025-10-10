@@ -4,8 +4,6 @@
 import streamlit as st
 import torch
 from PIL import Image
-import numpy as np
-import os
 
 ##############
 # Page Setup #
@@ -23,10 +21,8 @@ st.subheader("")
 #########################
 # Load YOLOv8 Model     #
 #########################
-@st.cache_resource
 def load_model():
-    model_path = "./model/best.pt"
-    model = torch.hub.load("ultralytics/yolov5", "custom", path=model_path, force_reload=True)
+    model = torch.hub.load("ultralytics/yolov5", "custom", path="./model/best.pt", force_reload=False)
     return model
 
 try:
@@ -42,7 +38,7 @@ except Exception as e:
 st.divider()
 st.subheader("🧩 Test the Model")
 
-uploaded_file = st.file_uploader("Upload a weld image (JPG or PNG):", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload a weld image:", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
     image = Image.open(uploaded_file)
@@ -51,20 +47,18 @@ if uploaded_file:
     if st.button("🔮 Predict", key="predict_button"):
         with st.spinner("Running model prediction..."):
             try:
-                # Convert image for YOLO
                 results = model(image, size=640)
-                pred_class = "No weld detected"
-
                 if len(results.xyxy[0]) > 0:
                     cls_idx = int(results.xyxy[0][0][-1].item())
                     pred_class = model.names[cls_idx]
+                else:
+                    pred_class = "No weld detected"
 
                 st.success(f"✅ Predicted Class: **{pred_class.upper()}**")
 
-                # Annotated results
                 results.render()
                 st.image(results.ims[0], caption="Detection Result", use_column_width=True)
             except Exception as e:
                 st.error(f"⚠️ Prediction failed: {e}")
 else:
-    st.warning("Please upload a weld image to begin.")
+    st.warning("Please upload an image to begin.")
