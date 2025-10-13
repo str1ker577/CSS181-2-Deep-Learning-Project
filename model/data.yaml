@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 3
+names: ['bad', 'defect', 'good']
+
+roboflow:
+  workspace: welding-vnkkh
+  project: welding-project-iaruw
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/welding-vnkkh/welding-project-iaruw/dataset/1
