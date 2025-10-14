@@ -4,6 +4,7 @@
 import streamlit as st
 from ultralytics import YOLO
 from PIL import Image
+import numpy as np
 import os
 import tempfile
 
@@ -21,14 +22,12 @@ st.set_page_config(
 ###################
 st.sidebar.title("🔧 Navigation")
 
-# Use clickable buttons instead of selectbox/radio
 pages = {
     "🏠 Home": "home",
     "📘 Project Description": "description",
     "🔍 Predictions": "predictions"
 }
 
-# Track which page user clicks on
 if "current_page" not in st.session_state:
     st.session_state.current_page = "🏠 Home"
 
@@ -37,6 +36,16 @@ for name, key in pages.items():
         st.session_state.current_page = name
 
 page = st.session_state.current_page
+
+st.markdown("""
+    <style>
+    div[data-testid="stSidebar"] button {
+        width: 100% !important;
+        height: 50px !important;
+        font-size: 16px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 ########################################
 # PAGE 1: Home - Intro and Team Details #
@@ -80,33 +89,6 @@ elif page == "📘 Project Description":
 
     **Future work** should focus on expanding the dataset—especially for defect classes—and improving image quality 
     for enhanced feature learning and model robustness.  
-
-    **Keywords:** Weld quality prediction, deep learning, image segmentation, object detection, computer vision, defect classification, automated inspection, quality control, mAP.
-    """)
-
-    st.markdown("---")
-    st.markdown("""
-    ### **I. Introduction**
-    Ensuring the structural integrity of welded joints is vital in manufacturing and construction. Even minor flaws 
-    can compromise safety and durability. Manual inspections are time-consuming and prone to human error, underscoring 
-    the need for automated systems that can classify weld quality with precision.
-
-    This project applies the **YOLOv12 object detection framework** to annotate and classify welds into:
-    1. **Good** — smooth and consistent seams without spatters  
-    2. **Bad** — irregular seams with excess spatters  
-    3. **Defect** — welds that appear good but have critical cracks at the seam  
-
-    Automating weld assessment enhances reliability, supports production optimization, and promotes safer engineering practices.
-    """)
-
-    st.markdown("---")
-    st.markdown("""
-    ### **II. Related Work**
-    **Cengil [1]** used the YOLOv10n model to detect weld flaws on the Kaggle *Welding Defect – Object Detection* dataset.  
-    The model achieved **0.939 precision** and **0.91 recall**, demonstrating its strong detection capability.  
-
-    **Truong et al. [2]** also utilized YOLOv10 for weld flaw detection, comparing predicted and actual bounding boxes 
-    using Intersection over Union (IoU), showing YOLOv10’s efficiency for fast and accurate weld detection.
     """)
 
 ###################################
@@ -114,12 +96,9 @@ elif page == "📘 Project Description":
 ###################################
 elif page == "🔍 Predictions":
     st.title("🔍 Weld Quality Prediction")
-    st.markdown("Upload an image to test the trained YOLOv12 model.")
+    st.markdown("Upload an image to test the trained YOLOv12 segmentation model.")
     st.divider()
 
-    #########################
-    # Load YOLOv12 Model    #
-    #########################
     @st.cache_resource
     def load_model():
         model_path = "./model/best.pt"
@@ -135,34 +114,148 @@ elif page == "🔍 Predictions":
         st.error(f"⚠️ Error loading model: {e}")
         st.stop()
 
-    #########################
-    # Upload + Predict UI   #
-    #########################
     uploaded_file = st.file_uploader("📤 Upload a weld image:", type=["jpg", "jpeg", "png"])
 
     if uploaded_file:
-        image = Image.open(uploaded_file)
+        image = Image.open(uploaded_file).convert("RGB")
         st.image(image, caption="🖼 Uploaded Image", use_column_width=True)
 
         if st.button("🔮 Predict"):
             with st.spinner("Running model prediction..."):
                 try:
-                    file_ext = os.path.splitext(uploaded_file.name)[1]
-                    with tempfile.NamedTemporaryFile(suffix=file_ext, delete=False) as tmp:
+                    import cv2
+                    import numpy as np
+                    import tempfile
+
+                    # Save to temp file
+                    suffix = os.path.splitext(uploaded_file.name)[1]
+                    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                         image.save(tmp.name)
                         results = model(tmp.name)
 
-                    boxes = results[0].boxes
-                    pred_class = (
-                        results[0].names[int(boxes.cls[0])]
-                        if len(boxes) > 0
-                        else "No weld detected"
-                    )
+                    res = results[0]
 
-                    st.success(f"✅ **Predicted Class:** {pred_class.upper()}")
+                    if res.masks is None or len(res.masks.data) == 0:
+                        st.warning("⚠️ No welds detected in this image.")
+                        st.stop()
 
-                    annotated = results[0].plot()
-                    st.image(annotated, caption="🧠 Detection Result", use_column_width=True)
+                    # Convert image to OpenCV
+                    img_np = np.array(image)
+                    img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+
+                    color_map = {
+                        "good": (0, 255, 0),
+                        "bad": (0, 0, 255),
+                        "defect": (0, 165, 255)
+                    }
+
+                    def draw_label_with_bg(img, text, pos, color):
+                        x, y = pos
+                        font = cv2.FONT_HERSHEY_SIMPLEX
+                        scale = 0.6
+                        thickness = 2
+                        (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
+                        bg_color = (40, 40, 40)
+                        cv2.rectangle(img, (x - 3, y - th - 6), (x + tw + 3, y + 3), bg_color, -1)
+                        cv2.putText(img, text, (x, y), font, scale, color, thickness, cv2.LINE_AA)
+
+                    def smooth_mask(mask, kernel_size=5, epsilon_factor=0.001):
+                        """
+                        Smooths mask edges for cleaner contours:
+                        - Applies Gaussian blur to reduce noise
+                        - Uses morphological operations to close gaps
+                        - Approximates contours for smoother outlines
+                        """
+                        # Ensure mask is uint8
+                        mask = (mask * 255).astype(np.uint8)
+                        
+                        # Resize mask to match image dimensions if needed
+                        h, w = img_np.shape[:2]
+                        if mask.shape != (h, w):
+                            mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_LINEAR)
+                        
+                        # Apply bilateral filter for edge-preserving smoothing
+                        mask_filtered = cv2.bilateralFilter(mask, 9, 75, 75)
+                        
+                        # Apply Gaussian blur to smooth edges further
+                        mask_blurred = cv2.GaussianBlur(mask_filtered, (kernel_size, kernel_size), 0)
+                        
+                        # Threshold to binary
+                        _, mask_thresh = cv2.threshold(mask_blurred, 127, 255, cv2.THRESH_BINARY)
+                        
+                        # Morphological operations: close then open
+                        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+                        mask_closed = cv2.morphologyEx(mask_thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+                        mask_smooth = cv2.morphologyEx(mask_closed, cv2.MORPH_OPEN, kernel, iterations=1)
+                        
+                        # Find contours
+                        contours, _ = cv2.findContours(mask_smooth, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                        
+                        # Approximate contours for smoother curves
+                        smoothed_contours = []
+                        for contour in contours:
+                            # Filter out very small contours (noise)
+                            if cv2.contourArea(contour) < 50:
+                                continue
+                            epsilon = epsilon_factor * cv2.arcLength(contour, True)
+                            approx = cv2.approxPolyDP(contour, epsilon, True)
+                            smoothed_contours.append(approx)
+                        
+                        return smoothed_contours
+
+                    masks = res.masks.data.cpu().numpy()
+                    class_ids = res.boxes.cls.cpu().numpy().astype(int)
+                    confs = res.boxes.conf.cpu().numpy()
+
+                    label_counts = {"good": 0, "bad": 0, "defect": 0}
+
+                    for i, mask in enumerate(masks):
+                        cls_id = class_ids[i]
+                        label = res.names[cls_id].lower()
+                        conf = confs[i]
+                        color = color_map.get(label, (255, 255, 255))
+
+                        # Apply smoothing function
+                        smoothed_contours = smooth_mask(mask, kernel_size=9, epsilon_factor=0.003)
+
+                        if not smoothed_contours:
+                            continue
+
+                        # Draw filled semi-transparent mask
+                        overlay = img_np.copy()
+                        cv2.drawContours(overlay, smoothed_contours, -1, color, -1)
+                        img_np = cv2.addWeighted(overlay, 0.4, img_np, 0.6, 0)
+                        
+                        # Draw smooth outline
+                        cv2.drawContours(img_np, smoothed_contours, -1, color, 3, cv2.LINE_AA)
+
+                        # Draw label
+                        x, y, w, h = cv2.boundingRect(smoothed_contours[0])
+                        text = f"{label.capitalize()} ({conf:.2f})"
+                        draw_label_with_bg(img_np, text, (x, y - 5), color)
+
+                        # Count each detected weld
+                        if label in label_counts:
+                            label_counts[label] += 1
+
+                    annotated_image = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
+                    st.image(annotated_image, caption="🧠 Segmentation Result", use_column_width=True)
+
+                    # --- Summary ---
+                    total = sum(label_counts.values())
+                    st.markdown("---")
+                    st.subheader("📊 Prediction Summary")
+                    st.markdown(f"**Total Welds Detected:** {total}")
+                    cols = st.columns(3)
+                    cols[0].metric("🟢 Good", label_counts["good"])
+                    cols[1].metric("🔴 Bad", label_counts["bad"])
+                    cols[2].metric("🟠 Defect", label_counts["defect"])
+
+                    if total > 0:
+                        st.markdown("### 🧾 Percentages")
+                        st.write(f"- 🟢 Good: {label_counts['good'] / total * 100:.1f}%")
+                        st.write(f"- 🔴 Bad: {label_counts['bad'] / total * 100:.1f}%")
+                        st.write(f"- 🟠 Defect: {label_counts['defect'] / total * 100:.1f}%")
 
                 except Exception as e:
                     st.error(f"⚠️ Prediction failed: {e}")
