@@ -218,50 +218,59 @@ elif page == "📘 Project Description":
     for enhanced feature learning and model robustness.
     """)
 
-############################
-# PAGE 3: Results & Charts #
-############################
-elif page == "📊 Results & Summary":
+###########################################
+# PAGE 3: Results & Model Evaluation Charts
+###########################################
+elif page == "📈 Results & Summary":
     import pandas as pd
+    import time
+
     st.title("📊 Model Evaluation Results")
     st.markdown("---")
 
-    results_path = "./results/results.csv"
+    results_dir = "./results"
+    results_path = os.path.join(results_dir, "results.csv")
 
-    @st.cache_data
-    def load_results(path):
-        """Load small results.csv once."""
-        return pd.read_csv(path)
+    st.write("🕵️ Debug info:")
+    st.write("- Current directory:", os.getcwd())
+    st.write("- Contents of results/:", os.listdir(results_dir))
 
+    start = time.time()
+
+    # --- Step 1: Try to load CSV safely ---
     if os.path.exists(results_path):
-        df = load_results(results_path)
+        try:
+            st.info("📄 Loading CSV file...")
+            df = pd.read_csv(results_path, engine="python", encoding_errors="ignore")
 
-        st.subheader("📋 Model Performance Summary")
-        st.dataframe(df, use_container_width=True)
-        st.caption(f"Showing {len(df)} total results from model predictions.")
-
-        # Optional summary stats
-        if {"good", "bad", "defective"}.issubset(df.columns):
-            st.markdown("### 🧾 Summary Statistics")
-            summary = df[["good", "bad", "defective"]].sum()
-            st.write(summary)
+            st.success(f"✅ Loaded CSV successfully! ({len(df)} rows × {len(df.columns)} columns)")
+            st.dataframe(df.head(10), use_container_width=True)
+        except Exception as e:
+            st.error(f"❌ CSV loading failed: {e}")
     else:
-        st.warning("⚠️ No results.csv file found in the `results/` folder.")
+        st.warning("⚠️ No results.csv found in the results folder!")
 
     st.markdown("---")
 
-    # --- Display charts ---
-    st.subheader("📈 Visual Charts")
-    results_dir = "./results"
+    # --- Step 2: Try loading charts safely ---
+    try:
+        st.info("🖼 Loading charts...")
+        chart_files = [f for f in os.listdir(results_dir) if f.endswith((".png", ".jpg"))]
+        if chart_files:
+            for chart in chart_files:
+                img_path = os.path.join(results_dir, chart)
+                try:
+                    st.image(img_path, caption=f"📊 {chart}", use_column_width=True)
+                except Exception as e:
+                    st.error(f"⚠️ Error displaying {chart}: {e}")
+        else:
+            st.info("📎 No charts found.")
+    except Exception as e:
+        st.error(f"⚠️ Chart loading failed: {e}")
 
-    chart_files = [f for f in os.listdir(results_dir) if f.endswith((".png", ".jpg"))]
+    st.success(f"✅ Finished loading everything in {time.time() - start:.2f} seconds")
 
-    if chart_files:
-        cols = st.columns(2)
-        for i, chart in enumerate(chart_files):
-            img_path = os.path.join(results_dir, chart)
-            with cols[i % 2]:
-                st.image(img_path, caption=f"📊 {chart}", use_container_width=True)
-    else:
-        st.info("📎 No charts found in the `results/` folder.")
+
+
+
 
