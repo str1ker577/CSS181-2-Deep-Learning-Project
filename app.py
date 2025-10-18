@@ -23,19 +23,18 @@ st.set_page_config(
 st.sidebar.title("🔧 Navigation")
 
 pages = {
-    "🏠 Home": "home",
+    "🔍 Predictions": "predictions",
     "📘 Project Description": "description",
-    "🔍 Predictions": "predictions"
+    "📈 Results & Summary": "results"
 }
 
 if "current_page" not in st.session_state:
-    st.session_state.current_page = "🏠 Home"
+    st.session_state.current_page = "🔍 Predictions"
 
+# --- Sidebar Buttons (Consistent Size) ---
 for name, key in pages.items():
-    if st.sidebar.button(name):
+    if st.sidebar.button(name, use_container_width=True):
         st.session_state.current_page = name
-
-page = st.session_state.current_page
 
 st.markdown("""
     <style>
@@ -43,58 +42,33 @@ st.markdown("""
         width: 100% !important;
         height: 50px !important;
         font-size: 16px !important;
+        margin-bottom: 5px !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-########################################
-# PAGE 1: Home - Intro and Team Details #
-########################################
-if page == "🏠 Home":
-    st.title("The Neural Force Project")
-    st.subheader("A Deep Learning Approach to Weld Quality Classification")
-    st.markdown("---")
+# --- Home/Team Info Section (Sidebar Bottom) ---
+st.sidebar.markdown("---")
+st.sidebar.markdown("""
+### 🧠 **The Neural Force Project**
+**A Deep Learning Approach to Weld Quality Classification**
 
-    st.write("""
-    **Course:** CSS181-2  
-    **Section:** AM1  
+**Course:** CSS181-2  
+**Section:** AM1  
 
-    **Group Name:** The Neural Force  
-    **Members:**  
-    - Celles, Aaron  
-    - Leviste, Lee  
-    - Lim, Kyle  
-    - Santeco, Enrique  
-    """)
-
-    st.markdown("---")
-    st.info("Use the sidebar to explore the project description or test predictions.")
-
-#############################################
-# PAGE 2: Project Description and Background #
-#############################################
-elif page == "📘 Project Description":
-    st.title("📘 Project Description")
-    st.markdown("---")
-
-    st.markdown("""
-    ### **Abstract**
-    Using image data, this study utilized a deep learning model (**YOLOv12**) to predict and classify weld quality, 
-    categorizing welds as **good**, **bad**, or **defect**. Evaluation metrics such as **precision**, **recall**, and 
-    **mean Average Precision (mAP)** were used to assess model performance through segmentation-based detection.  
-
-    Results indicated that due to fewer training samples and less distinct features in the *defect* class, 
-    the model had lower accuracy identifying certain classes. Nonetheless, it demonstrated balanced detection 
-    and segmentation performance, with slightly higher accuracy in bounding box prediction.  
-
-    **Future work** should focus on expanding the dataset—especially for defect classes—and improving image quality 
-    for enhanced feature learning and model robustness.  
-    """)
+**Members:**  
+- Celles, Aaron Kent
+- Leviste, Lee Ryan
+- Lim, Kyle Hendrik L.
+- Santeco, Enrique  
+""")
 
 ###################################
-# PAGE 3: Model Prediction (YOLO) #
+# PAGE 1: Model Prediction (Home) #
 ###################################
-elif page == "🔍 Predictions":
+page = st.session_state.current_page
+
+if page == "🔍 Predictions":
     st.title("🔍 Weld Quality Prediction")
     st.markdown("Upload an image to test the trained YOLOv12 segmentation model.")
     st.divider()
@@ -127,7 +101,6 @@ elif page == "🔍 Predictions":
                     import numpy as np
                     import tempfile
 
-                    # Save to temp file
                     suffix = os.path.splitext(uploaded_file.name)[1]
                     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                         image.save(tmp.name)
@@ -139,7 +112,6 @@ elif page == "🔍 Predictions":
                         st.warning("⚠️ No welds detected in this image.")
                         st.stop()
 
-                    # Convert image to OpenCV
                     img_np = np.array(image)
                     img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
@@ -160,53 +132,29 @@ elif page == "🔍 Predictions":
                         cv2.putText(img, text, (x, y), font, scale, color, thickness, cv2.LINE_AA)
 
                     def smooth_mask(mask, kernel_size=5, epsilon_factor=0.001):
-                        """
-                        Smooths mask edges for cleaner contours:
-                        - Applies Gaussian blur to reduce noise
-                        - Uses morphological operations to close gaps
-                        - Approximates contours for smoother outlines
-                        """
-                        # Ensure mask is uint8
                         mask = (mask * 255).astype(np.uint8)
-                        
-                        # Resize mask to match image dimensions if needed
                         h, w = img_np.shape[:2]
                         if mask.shape != (h, w):
                             mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_LINEAR)
-                        
-                        # Apply bilateral filter for edge-preserving smoothing
                         mask_filtered = cv2.bilateralFilter(mask, 9, 75, 75)
-                        
-                        # Apply Gaussian blur to smooth edges further
                         mask_blurred = cv2.GaussianBlur(mask_filtered, (kernel_size, kernel_size), 0)
-                        
-                        # Threshold to binary
                         _, mask_thresh = cv2.threshold(mask_blurred, 127, 255, cv2.THRESH_BINARY)
-                        
-                        # Morphological operations: close then open
                         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
                         mask_closed = cv2.morphologyEx(mask_thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
                         mask_smooth = cv2.morphologyEx(mask_closed, cv2.MORPH_OPEN, kernel, iterations=1)
-                        
-                        # Find contours
                         contours, _ = cv2.findContours(mask_smooth, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                        
-                        # Approximate contours for smoother curves
                         smoothed_contours = []
                         for contour in contours:
-                            # Filter out very small contours (noise)
                             if cv2.contourArea(contour) < 50:
                                 continue
                             epsilon = epsilon_factor * cv2.arcLength(contour, True)
                             approx = cv2.approxPolyDP(contour, epsilon, True)
                             smoothed_contours.append(approx)
-                        
                         return smoothed_contours
 
                     masks = res.masks.data.cpu().numpy()
                     class_ids = res.boxes.cls.cpu().numpy().astype(int)
                     confs = res.boxes.conf.cpu().numpy()
-
                     label_counts = {"good": 0, "bad": 0, "defect": 0}
 
                     for i, mask in enumerate(masks):
@@ -214,34 +162,22 @@ elif page == "🔍 Predictions":
                         label = res.names[cls_id].lower()
                         conf = confs[i]
                         color = color_map.get(label, (255, 255, 255))
-
-                        # Apply smoothing function
                         smoothed_contours = smooth_mask(mask, kernel_size=9, epsilon_factor=0.003)
-
                         if not smoothed_contours:
                             continue
-
-                        # Draw filled semi-transparent mask
                         overlay = img_np.copy()
                         cv2.drawContours(overlay, smoothed_contours, -1, color, -1)
                         img_np = cv2.addWeighted(overlay, 0.4, img_np, 0.6, 0)
-                        
-                        # Draw smooth outline
                         cv2.drawContours(img_np, smoothed_contours, -1, color, 3, cv2.LINE_AA)
-
-                        # Draw label
                         x, y, w, h = cv2.boundingRect(smoothed_contours[0])
                         text = f"{label.capitalize()} ({conf:.2f})"
                         draw_label_with_bg(img_np, text, (x, y - 5), color)
-
-                        # Count each detected weld
                         if label in label_counts:
                             label_counts[label] += 1
 
                     annotated_image = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
                     st.image(annotated_image, caption="🧠 Segmentation Result", use_column_width=True)
 
-                    # --- Summary ---
                     total = sum(label_counts.values())
                     st.markdown("---")
                     st.subheader("📊 Prediction Summary")
@@ -261,3 +197,72 @@ elif page == "🔍 Predictions":
                     st.error(f"⚠️ Prediction failed: {e}")
     else:
         st.info("📎 Please upload an image to begin prediction.")
+
+#############################################
+# PAGE 2: Project Description and Background #
+#############################################
+elif page == "📘 Project Description":
+    st.title("📘 Project Description")
+    st.markdown("---")
+    st.markdown("""
+    ### **Abstract**
+    Using image data, this study utilized a deep learning model (**YOLOv12**) to predict and classify weld quality,
+    categorizing welds as **good**, **bad**, or **defect**. Evaluation metrics such as **precision**, **recall**, and
+    **mean Average Precision (mAP)** were used to assess model performance through segmentation-based detection.
+
+    Results indicated that due to fewer training samples and less distinct features in the *defect* class,
+    the model had lower accuracy identifying certain classes. Nonetheless, it demonstrated balanced detection
+    and segmentation performance, with slightly higher accuracy in bounding box prediction.
+
+    **Future work** should focus on expanding the dataset—especially for defect classes—and improving image quality
+    for enhanced feature learning and model robustness.
+    """)
+
+############################
+# PAGE 3: Results & Charts #
+############################
+elif page == "📊 Results & Summary":
+    st.title("📊 Model Evaluation Results")
+    st.markdown("---")
+
+    import pandas as pd
+
+    results_path = "./results/results.csv"
+
+    @st.cache_data(show_spinner=False)
+    def load_large_csv(path, nrows=1000):
+        """Loads only part of a large CSV for preview."""
+        return pd.read_csv(path, nrows=nrows)
+
+    if os.path.exists(results_path):
+        st.subheader("📋 Model Metrics Summary")
+
+        # Load a limited preview
+        df_preview = load_large_csv(results_path)
+        st.dataframe(df_preview, use_container_width=True)
+        st.caption(f"Showing first {len(df_preview)} rows from a large dataset (~100 MB).")
+
+        # Optional: download full CSV
+        with open(results_path, "rb") as f:
+            st.download_button(
+                label="⬇️ Download full results.csv",
+                data=f,
+                file_name="results.csv",
+                mime="text/csv",
+            )
+    else:
+        st.warning("⚠️ No results.csv file found in the 'results' folder.")
+
+    st.markdown("---")
+
+    # --- Display charts ---
+    st.subheader("📈 Performance Charts")
+    results_dir = "./results"
+    chart_files = [f for f in os.listdir(results_dir) if f.endswith((".png", ".jpg"))]
+
+    if chart_files:
+        for chart in chart_files:
+            img_path = os.path.join(results_dir, chart)
+            st.image(img_path, caption=f"📊 {chart}", use_container_width=True)
+    else:
+        st.info("📎 No charts found in the 'results' folder.")
