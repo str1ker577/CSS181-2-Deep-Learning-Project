@@ -222,47 +222,46 @@ elif page == "📘 Project Description":
 # PAGE 3: Results & Charts #
 ############################
 elif page == "📊 Results & Summary":
+    import pandas as pd
     st.title("📊 Model Evaluation Results")
     st.markdown("---")
 
-    import pandas as pd
-
     results_path = "./results/results.csv"
 
-    @st.cache_data(show_spinner=False)
-    def load_large_csv(path, nrows=1000):
-        """Loads only part of a large CSV for preview."""
-        return pd.read_csv(path, nrows=nrows)
+    @st.cache_data
+    def load_results(path):
+        """Load small results.csv once."""
+        return pd.read_csv(path)
 
     if os.path.exists(results_path):
-        st.subheader("📋 Model Metrics Summary")
+        df = load_results(results_path)
 
-        # Load a limited preview
-        df_preview = load_large_csv(results_path)
-        st.dataframe(df_preview, use_container_width=True)
-        st.caption(f"Showing first {len(df_preview)} rows from a large dataset (~100 MB).")
+        st.subheader("📋 Model Performance Summary")
+        st.dataframe(df, use_container_width=True)
+        st.caption(f"Showing {len(df)} total results from model predictions.")
 
-        # Optional: download full CSV
-        with open(results_path, "rb") as f:
-            st.download_button(
-                label="⬇️ Download full results.csv",
-                data=f,
-                file_name="results.csv",
-                mime="text/csv",
-            )
+        # Optional summary stats
+        if {"good", "bad", "defective"}.issubset(df.columns):
+            st.markdown("### 🧾 Summary Statistics")
+            summary = df[["good", "bad", "defective"]].sum()
+            st.write(summary)
     else:
-        st.warning("⚠️ No results.csv file found in the 'results' folder.")
+        st.warning("⚠️ No results.csv file found in the `results/` folder.")
 
     st.markdown("---")
 
     # --- Display charts ---
-    st.subheader("📈 Performance Charts")
+    st.subheader("📈 Visual Charts")
     results_dir = "./results"
+
     chart_files = [f for f in os.listdir(results_dir) if f.endswith((".png", ".jpg"))]
 
     if chart_files:
-        for chart in chart_files:
+        cols = st.columns(2)
+        for i, chart in enumerate(chart_files):
             img_path = os.path.join(results_dir, chart)
-            st.image(img_path, caption=f"📊 {chart}", use_container_width=True)
+            with cols[i % 2]:
+                st.image(img_path, caption=f"📊 {chart}", use_container_width=True)
     else:
-        st.info("📎 No charts found in the 'results' folder.")
+        st.info("📎 No charts found in the `results/` folder.")
+
