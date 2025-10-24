@@ -69,8 +69,8 @@ st.sidebar.markdown("""
 page = st.session_state.current_page
 
 if page == "🔍 Predictions":
-    st.title("🔍 Weld Quality Prediction")
-    st.markdown("Upload an image to test the trained YOLOv12 segmentation model.")
+    st.title("🔍 Weld Defect Detection")
+    st.markdown("Upload an image to detect weld lines, spatters, porosity, and cracks using YOLOv12 segmentation.")
     st.divider()
 
     @st.cache_resource
@@ -109,16 +109,28 @@ if page == "🔍 Predictions":
                     res = results[0]
 
                     if res.masks is None or len(res.masks.data) == 0:
-                        st.warning("⚠️ No welds detected in this image.")
+                        st.warning("⚠️ No weld features detected in this image.")
                         st.stop()
 
                     img_np = np.array(image)
                     img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
+                    # Color map in BGR format for OpenCV
+                    # Green for weld line, Cyan for spatters, Purple for porosity, Orange for cracks
                     color_map = {
-                        "good": (0, 255, 0),
-                        "bad": (0, 0, 255),
-                        "defect": (0, 165, 255)
+                        "welding line": (0, 255, 0),     # Green
+                        "weld line": (0, 255, 0),        # Green
+                        "weldingline": (0, 255, 0),      # Green
+                        "weld_line": (0, 255, 0),        # Green
+                        "welding_line": (0, 255, 0),     # Green
+                        "spatters": (255, 255, 0),       # Cyan
+                        "spatter": (255, 255, 0),        # Cyan
+                        "splatters": (255, 255, 0),      # Cyan (alternative spelling)
+                        "splatter": (255, 255, 0),       # Cyan (alternative spelling)
+                        "porosity": (128, 0, 128),       # Purple
+                        "porosities": (128, 0, 128),     # Purple
+                        "cracks": (0, 165, 255),         # Orange
+                        "crack": (0, 165, 255)           # Orange
                     }
 
                     def draw_label_with_bg(img, text, pos, color):
@@ -152,71 +164,158 @@ if page == "🔍 Predictions":
                             smoothed_contours.append(approx)
                         return smoothed_contours
 
+                    def normalize_label(label):
+                        """Normalize label names for consistent counting and display"""
+                        label_lower = label.lower().replace(" ", "").replace("_", "")
+                        
+                        if "weld" in label_lower or "line" in label_lower:
+                            return "weld line"
+                        elif "spat" in label_lower:  # Catches both spatters and splatters
+                            return "spatters"
+                        elif "poros" in label_lower:
+                            return "porosity"
+                        elif "crack" in label_lower:
+                            return "cracks"
+                        
+                        return label.lower()
+
                     masks = res.masks.data.cpu().numpy()
                     class_ids = res.boxes.cls.cpu().numpy().astype(int)
                     confs = res.boxes.conf.cpu().numpy()
-                    label_counts = {"good": 0, "bad": 0, "defect": 0}
+                    
+                    # Label counts
+                    label_counts = {"weld line": 0, "spatters": 0, "porosity": 0, "cracks": 0}
 
                     for i, mask in enumerate(masks):
                         cls_id = class_ids[i]
                         label = res.names[cls_id].lower()
                         conf = confs[i]
-                        color = color_map.get(label, (255, 255, 255))
+                        
+                        # Get normalized label for counting
+                        normalized_label = normalize_label(label)
+                        
+                        # Get color from map (check various forms of the label)
+                        label_clean = label.replace(" ", "").replace("_", "")
+                        color = color_map.get(label, color_map.get(label_clean, (200, 200, 200)))
+                        
                         smoothed_contours = smooth_mask(mask, kernel_size=9, epsilon_factor=0.003)
+                        
                         if not smoothed_contours:
                             continue
+                        
                         overlay = img_np.copy()
                         cv2.drawContours(overlay, smoothed_contours, -1, color, -1)
                         img_np = cv2.addWeighted(overlay, 0.4, img_np, 0.6, 0)
                         cv2.drawContours(img_np, smoothed_contours, -1, color, 3, cv2.LINE_AA)
+                        
                         x, y, w, h = cv2.boundingRect(smoothed_contours[0])
-                        text = f"{label.capitalize()} ({conf:.2f})"
+                        text = f"{normalized_label.capitalize()} ({conf:.2f})"
                         draw_label_with_bg(img_np, text, (x, y - 5), color)
-                        if label in label_counts:
-                            label_counts[label] += 1
+                        
+                        if normalized_label in label_counts:
+                            label_counts[normalized_label] += 1
 
                     annotated_image = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
                     st.image(annotated_image, caption="🧠 Segmentation Result", use_column_width=True)
 
                     total = sum(label_counts.values())
                     st.markdown("---")
-                    st.subheader("📊 Prediction Summary")
-                    st.markdown(f"**Total Welds Detected:** {total}")
-                    cols = st.columns(3)
-                    cols[0].metric("🟢 Good", label_counts["good"])
-                    cols[1].metric("🔴 Bad", label_counts["bad"])
-                    cols[2].metric("🟠 Defect", label_counts["defect"])
+                    st.subheader("📊 Detection Summary")
+                    st.markdown(f"**Total Features Detected:** {total}")
+                    
+                    cols = st.columns(4)
+                    cols[0].metric("🟢 Weld Lines", label_counts["weld line"])
+                    cols[1].metric("🔵 Spatters", label_counts["spatters"])
+                    cols[2].metric("🟣 Porosity", label_counts["porosity"])
+                    cols[3].metric("🟠 Cracks", label_counts["cracks"])
 
-                    if total > 0:
-                        st.markdown("### 🧾 Percentages")
-                        st.write(f"- 🟢 Good: {label_counts['good'] / total * 100:.1f}%")
-                        st.write(f"- 🔴 Bad: {label_counts['bad'] / total * 100:.1f}%")
-                        st.write(f"- 🟠 Defect: {label_counts['defect'] / total * 100:.1f}%")
+
 
                 except Exception as e:
                     st.error(f"⚠️ Prediction failed: {e}")
     else:
-        st.info("📎 Please upload an image to begin prediction.")
+        st.info("📎 Please upload an image to begin detection.")
 
+#############################################
+# PAGE 2: Project Description and Background #
+#############################################
 #############################################
 # PAGE 2: Project Description and Background #
 #############################################
 elif page == "📘 Project Description":
     st.title("📘 Project Description")
     st.markdown("---")
+    
     st.markdown("""
     ### **Abstract**
-    Using image data, this study utilized a deep learning model (**YOLOv12**) to predict and classify weld quality,
-    categorizing welds as **good**, **bad**, or **defect**. Evaluation metrics such as **precision**, **recall**, and
-    **mean Average Precision (mAP)** were used to assess model performance through segmentation-based detection.
-
-    Results indicated that due to fewer training samples and less distinct features in the *defect* class,
-    the model had lower accuracy identifying certain classes. Nonetheless, it demonstrated balanced detection
-    and segmentation performance, with slightly higher accuracy in bounding box prediction.
-
-    **Future work** should focus on expanding the dataset—especially for defect classes—and improving image quality
-    for enhanced feature learning and model robustness.
+    This study employs a deep learning model, **YOLOv12**, to automatically detect and analyze critical weld 
+    features from image data, specifically **welding line**, **porosity**, **spatters**, and **cracks**. Precision, 
+    recall, and mean Average Precision (mAP), among other important detection and segmentation metrics, were used 
+    to assess performance using a segmentation-based model. Due to their unique visual features, spatter and porosity 
+    detections produced the highest mAP scores, demonstrating the model's strong overall accuracy. Crack detection, 
+    on the other hand, performed worse, probably because of small training samples and subtle visual characteristics. 
+    With bounding box prediction exhibiting marginally better accuracy than mask segmentation, the model showed 
+    balanced detection and segmentation capabilities. Future work should concentrate on enhancing image quality to 
+    guarantee better feature learning, masking, and detection reliability to increase model robustness.
+    
+    **Keywords:** Weld feature prediction, deep learning, image segmentation, object detection, computer vision, 
+    defect classification, automated inspection, quality control, mAP.
     """)
+    
+    st.markdown("---")
+    
+    st.markdown("""
+    ### **I. Introduction**
+    Ensuring the structural integrity of welded joints is a critical aspect of industrial manufacturing and construction, 
+    as even minor flaws in welds can compromise safety, durability, and overall performance. Traditional manual inspection 
+    methods are often time-consuming, subjective, and prone to human error, highlighting the need for automated solutions 
+    that can accurately classify weld quality. 
+    
+    In this study, we focus on developing a deep learning–based approach using the **YOLOv12** object detection framework 
+    to annotate and classify welds into four categories:
+    
+    1. **Welding line** - representing the seam continuity
+    2. **Porosity** - indicating trapped gas voids or bubbles within the weld
+    3. **Spatters** - referring to scattered molten droplets around the weld area
+    4. **Cracks** - which are critical discontinuities that threaten structural integrity
+    
+    The implementation of automated weld classification has significant implications for productivity and cost-efficiency. 
+    Automated systems can provide rapid and consistent evaluations across large volumes of welds, enabling real-time 
+    monitoring and quality control within production pipelines. Furthermore, the ability of deep learning models to detect 
+    subtle variations that may not be visible to the human eye enhances the reliability of inspections compared to 
+    traditional methods.
+    
+    ---
+    
+    ### **Objectives**
+    The objective of this project is threefold:
+    
+    1. Explore a different annotation technique that best covers welded metal and its surrounding area
+    2. Build predictive models using YOLOv12 deep learning algorithm
+    3. Analyze and interpret detection outputs to evaluate weld integrity
+    
+    The outcome of this study supports production optimization, promotes safer and more efficient welding practices, and 
+    contributes to the growing body of research in intelligent inspection systems within industrial and manufacturing 
+    contexts, thereby reducing the risks of structural failure and improving compliance with safety standards in 
+    engineering applications.
+    """)
+    
+    st.markdown("---")
+    
+    # Download IEEE Paper Button (after abstract)
+    ieee_paper_path = "./CSS181-2_IEEE.pdf"
+    if os.path.exists(ieee_paper_path):
+        with open(ieee_paper_path, "rb") as pdf_file:
+            pdf_bytes = pdf_file.read()
+        st.download_button(
+            label="📄 Download Full IEEE Paper (PDF)",
+            data=pdf_bytes,
+            file_name="CSS181-2_IEEE.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+    else:
+        st.info("📎 IEEE Paper not found. Please place 'CSS181-2_IEEE.pdf' in the project root directory.")
 
 ###########################################
 # PAGE 3: Results & Model Evaluation Charts
@@ -231,10 +330,6 @@ elif page == "📈 Results & Summary":
     results_dir = "./results"
     results_path = os.path.join(results_dir, "results.csv")
 
-    st.write("🕵️ Debug info:")
-    st.write("- Current directory:", os.getcwd())
-    st.write("- Contents of results/:", os.listdir(results_dir))
-
     start = time.time()
 
     # --- Step 1: Try to load CSV safely ---
@@ -245,6 +340,17 @@ elif page == "📈 Results & Summary":
 
             st.success(f"✅ Loaded CSV successfully! ({len(df)} rows × {len(df.columns)} columns)")
             st.dataframe(df.head(10), use_container_width=True)
+            
+            # Download CSV Button
+            with open(results_path, "rb") as csv_file:
+                csv_bytes = csv_file.read()
+            st.download_button(
+                label="📥 Download Results CSV",
+                data=csv_bytes,
+                file_name="results.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
         except Exception as e:
             st.error(f"❌ CSV loading failed: {e}")
     else:
@@ -252,25 +358,4 @@ elif page == "📈 Results & Summary":
 
     st.markdown("---")
 
-    # --- Step 2: Try loading charts safely ---
-    try:
-        st.info("🖼 Loading charts...")
-        chart_files = [f for f in os.listdir(results_dir) if f.endswith((".png", ".jpg"))]
-        if chart_files:
-            for chart in chart_files:
-                img_path = os.path.join(results_dir, chart)
-                try:
-                    st.image(img_path, caption=f"📊 {chart}", use_column_width=True)
-                except Exception as e:
-                    st.error(f"⚠️ Error displaying {chart}: {e}")
-        else:
-            st.info("📎 No charts found.")
-    except Exception as e:
-        st.error(f"⚠️ Chart loading failed: {e}")
-
     st.success(f"✅ Finished loading everything in {time.time() - start:.2f} seconds")
-
-
-
-
-
