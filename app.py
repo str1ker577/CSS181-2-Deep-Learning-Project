@@ -20,7 +20,7 @@ st.set_page_config(
 ###################
 # Sidebar Layout  #
 ###################
-st.sidebar.title("🔧 Navigation")
+st.sidebar.title("A Deep Vision Segmentation Framework for Weld Defect Detection and Structural Integrity Analysis")
 
 pages = {
     "🔍 Predictions": "predictions",
@@ -53,14 +53,12 @@ st.sidebar.markdown("""
 ### 🧠 **The Neural Force Project**
 **A Deep Learning Approach to Weld Quality Classification**
 
-**Course:** CSS181-2  
-**Section:** AM1  
-
-**Members:**  
-- Celles, Aaron Kent
-- Leviste, Lee Ryan
-- Lim, Kyle Hendrik L.
-- Santeco, Enrique  
+**Contributors**  
+- Celles, A. K.
+- Leviste, L. R.
+- Lim, K. L.
+- Santeco,  E. S.
+- Dr. Comia, L. 
 """)
 
 ###################################
